@@ -79,6 +79,8 @@ export async function POST(req: Request) {
     // ==========================================
     console.log("🟡 6. Sending transcript to MiniMax...");
     
+    // app/api/agent/route.ts
+
     const llmResponse = await fetch('https://api.minimax.io/v1/text/chatcompletion_v2', {
       method: 'POST',
       headers: {
@@ -88,18 +90,38 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         model: "MiniMax-Text-01", 
         messages: [
-          { role: "system", content: MR_BEAST_PROMPT },
-          { role: "user", content: transcriptText } // We feed the Speechmatics text right here
-        ]
+          { 
+            role: "system", 
+            content: MR_BEAST_PROMPT + " \n\nIMPORTANT: You must respond ONLY with a JSON object. No conversational filler before or after. Format: {\"text\": \"your message\", \"success\": boolean}" 
+          },
+          { role: "user", content: transcriptText }
+        ],
+        // 🛑 REMOVE 'response_format' entirely to fix the error
       })
     });
     
     const llmData = await llmResponse.json();
-    
-    // Check for MiniMax specific error codes
-    if (llmData.base_resp && llmData.base_resp.status_code !== 0) {
-      throw new Error(`MiniMax Error: ${llmData.base_resp.status_msg}`);
+
+    // 1. Get the raw string content
+    let rawContent = llmData.choices[0].message.content;
+
+    // 2. THE CLEANER: Strip out Markdown code blocks if they exist
+    const jsonRegex = /\{[\s\S]*\}/; // Matches anything between the first { and last }
+    const match = rawContent.match(jsonRegex);
+
+    if (!match) {
+      throw new Error("MiniMax didn't return a valid JSON object.");
     }
+
+    const parsedData = JSON.parse(match[0]);
+
+    console.log("🟢 5. Cleaned MiniMax reply:", parsedData);
+
+    // 3. Send the structured data back to the frontend
+    return NextResponse.json({ 
+      text: parsedData.text, 
+      success: parsedData.success 
+    });
 
     const beastReply = llmData.choices[0].message.content;
     console.log("🟢 7. Real MiniMax reply:", beastReply);

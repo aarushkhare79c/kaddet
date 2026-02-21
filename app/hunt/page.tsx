@@ -4,6 +4,10 @@ import Link from 'next/link';
 import React, { useState, useRef } from 'react';
 
 export default function ScavengerHuntUI() {
+
+	const [showSuccess, setShowSuccess] = useState(false);
+	const [winData, setWinData] = useState({ points: 0, reason: "" });
+
   // --- AUDIO STATE & REFS ---
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -13,6 +17,7 @@ export default function ScavengerHuntUI() {
   // --- IMAGE STATE & REFS ---
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [capturedFile, setCapturedFile] = useState<File | null>(null); // New state for the raw file
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // MOCK DATA: Roster
@@ -57,51 +62,130 @@ export default function ScavengerHuntUI() {
     }
   };
 
-  const sendAudioToAgent = async () => {
-    const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-    const formData = new FormData();
-    formData.append('audio', audioBlob);
+ const sendAudioToAgent = async () => {
+  const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+  const formData = new FormData();
+  formData.append('audio', audioBlob);
 
-    try {
-      console.log("Sending audio to backend...");
-      const response = await fetch('/api/agent', {
-        method: 'POST',
-        body: formData,
+  try {
+    console.log("Sending audio to backend...");
+    const response = await fetch('/api/agent', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) throw new Error("Backend failed");
+
+    const data = await response.json();
+
+    // 1. Check if MiniMax thinks the user completed a task
+    // (We assume MiniMax returns a 'success' boolean based on your prompt)
+    if (data.success) {
+      setWinData({ 
+        points: 250, // Audio tasks might be worth fewer points than photo tasks
+        reason: data.text 
       });
-
-      if (!response.ok) throw new Error("Backend failed");
-
-      const data = await response.json();
+      setShowSuccess(true);
+      
+      // TODO: Trigger Convex mutation to add points
+      // await addPoints({ amount: 250 });
+    } else {
+      // If it's just a regular chat response, you can use a Toast 
+      // or just a temporary text overlay instead of a full modal
       alert("MrBeast says: " + data.text); 
-    } catch (error) {
-      console.error("Error talking to agent:", error);
-      alert("Oops, something broke! Check the terminal.");
-    } finally {
-      setIsLoading(false);
     }
-  };
+
+  } catch (error) {
+    console.error("Error talking to agent:", error);
+    alert("Oops, the Game Master is busy. Try again!");
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // ==========================================
   // 2. IMAGE CAPTURE LOGIC
   // ==========================================
-  const handleImageCapture = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      // Create a temporary local URL to preview the image instantly
-      const localUrl = URL.createObjectURL(file);
-      setImagePreview(localUrl);
-    }
-  };
+	const handleImageCapture = (event: React.ChangeEvent<HTMLInputElement>) => {
+	const file = event.target.files?.[0]; // Get the first file from the input
 
-  const handleSubmitProof = () => {
-    setIsSubmitting(true);
-    // TODO: Send image to Convex Action -> MiniMax Vision API
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setImagePreview(null);
-      alert("MiniMax says: THAT IS A RED BUILDING! +500 PTS!");
-    }, 2000); // Fake network delay
-  };
+	if (file) {
+		// 1. Store the raw File object for handleSubmitProof
+		setCapturedFile(file);
+
+		// 2. Create a temporary local URL for the UI preview
+		const localUrl = URL.createObjectURL(file);
+		setImagePreview(localUrl);
+
+		// 3. (Optional) Log the size to make sure it's not too massive for the API
+		console.log(`📸 Image Captured: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
+	}
+	};
+
+  // Inside your ScavengerHuntUI component
+const convertToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => {
+      // We want to strip the "data:image/png;base64," prefix for some APIs
+      // but keep it for others. MiniMax usually prefers the full data URL.
+      resolve(reader.result as string);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
+
+const handleSubmitProof = async () => {
+  if (!capturedFile) {
+    alert("No image captured!");
+    return;
+  }
+  
+  setIsSubmitting(true);
+
+  try {
+    // 1. Convert the File to Base64
+    console.log("🟡 Converting image to Base64...");
+    const base64Image = await convertToBase64(capturedFile);
+
+    // 2. Send to the Vision API route
+    console.log("🟡 Sending to MiniMax Vision Judge...");
+    const response = await fetch('/api/vision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        image: base64Image,
+        quest: "The giant glass pyramid by the museum" // You can pull this from your quest state
+      }),
+    });
+
+    if (!response.ok) throw new Error("Vision API failed");
+
+    const data = await response.json();
+    
+    // 3. Handle the AI's Decision
+    // Inside handleSubmitProof after getting data from /api/vision
+	if (data.success) {
+	setWinData({ points: 500, reason: data.reason }); // or dynamic points
+	setShowSuccess(true);
+	setImagePreview(null);
+	setCapturedFile(null);
+	// Trigger Convex point update here!
+	} else {
+	// You might want a "FailModal" too, but for now:
+	alert(`REJECTED: ${data.reason}`);
+	}
+
+  } catch (error) {
+    console.error("🔴 Vision Error:", error);
+    alert("The Judge is busy! Try submitting again.");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
+  
 
   // ==========================================
   // 3. THE UI RENDER
@@ -249,6 +333,50 @@ export default function ScavengerHuntUI() {
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}} />
+
+	  <SuccessModal 
+        isOpen={showSuccess} 
+        points={winData.points} 
+        reason={winData.reason} 
+        onClose={() => setShowSuccess(false)} 
+      />
+    </div>
+  );
+}
+
+// Simple Success Modal Component
+function SuccessModal({ isOpen, points, reason, onClose }: { 
+  isOpen: boolean; 
+  points: number; 
+  reason: string; 
+  onClose: () => void 
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-yellow-400 border-8 border-black p-8 rounded-3xl shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] max-w-sm w-full transform animate-in zoom-in slide-in-from-bottom-10 duration-300">
+        
+        <div className="text-center">
+          <div className="text-7xl mb-4 animate-bounce">🏆</div>
+          <h2 className="text-4xl font-black uppercase tracking-tighter leading-none mb-2">Epic Win!</h2>
+          <div className="inline-block bg-black text-white px-4 py-1 rounded-full font-black text-xl mb-6">
+            +{points} PTS
+          </div>
+          
+          <p className="text-lg font-bold leading-tight mb-8">
+            "{reason}"
+          </p>
+
+          <button 
+            onClick={onClose}
+            className="w-full bg-blue-600 text-white border-4 border-black py-4 rounded-2xl font-black text-xl uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none hover:bg-blue-500"
+          >
+            Next Mission!
+          </button>
+        </div>
+        
+      </div>
     </div>
   );
 }
