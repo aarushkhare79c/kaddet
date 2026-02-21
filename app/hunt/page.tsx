@@ -82,7 +82,7 @@ export default function ScavengerHuntUI() {
     // (We assume MiniMax returns a 'success' boolean based on your prompt)
     if (data.success) {
       setWinData({ 
-        points: 250, // Audio tasks might be worth fewer points than photo tasks
+        points: 500, // Audio tasks might be worth fewer points than photo tasks
         reason: data.text 
       });
       setShowSuccess(true);

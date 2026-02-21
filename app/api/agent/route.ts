@@ -122,6 +122,7 @@ export async function POST(req: Request) {
     // ==========================================
     if (parsedData.success) {
       console.log(`🏆 Success! Adding 500 points to ${username}`);
+      await convex.mutation(api.users.ensureUser, { username: username });
       await convex.mutation(api.users.addPoints, { 
         username: username, 
         amount: 500 
