@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { MR_BEAST_PROMPT } from '../../../lib/prompt';
-
+import { api } from "../../../my-app/convex/_generated/api";
+import { ConvexHttpClient } from "convex/browser";
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 export async function POST(req: Request) {
   try {
     console.log("🟢 1. Receiving audio from frontend...");
     const formData = await req.formData();
     const audioFile = formData.get('audio') as File;
+    const username = formData.get('username') as string || "Anonymous"; // Get username from UI
 
     if (!audioFile) {
       return NextResponse.json({ error: "No audio provided" }, { status: 400 });
@@ -114,20 +117,21 @@ export async function POST(req: Request) {
     }
 
     const parsedData = JSON.parse(match[0]);
+    // ==========================================
+    // STEP 3: UPDATE CONVEX
+    // ==========================================
+    if (parsedData.success) {
+      console.log(`🏆 Success! Adding 500 points to ${username}`);
+      await convex.mutation(api.users.addPoints, { 
+        username: username, 
+        amount: 500 
+      });
+    }
 
-    console.log("🟢 5. Cleaned MiniMax reply:", parsedData);
-
-    // 3. Send the structured data back to the frontend
     return NextResponse.json({ 
       text: parsedData.text, 
       success: parsedData.success 
     });
-
-    const beastReply = llmData.choices[0].message.content;
-    console.log("🟢 7. Real MiniMax reply:", beastReply);
-
-    // 🛑 Return the final MrBeast response to the frontend alert
-    return NextResponse.json({ text: beastReply });
 
   } catch (error: any) {
     console.error("🔴 Pipeline Error:", error);
