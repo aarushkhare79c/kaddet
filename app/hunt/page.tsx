@@ -1,19 +1,30 @@
 'use client';
-import { useState, useRef } from 'react';
+
 import Link from 'next/link';
+import React, { useState, useRef } from 'react';
 
 export default function ScavengerHuntUI() {
+  // --- AUDIO STATE & REFS ---
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
+  // --- IMAGE STATE & REFS ---
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // MOCK DATA: Roster
   const mockRoster = [
     { id: "1", name: "You", avatar: "😎", points: 1200, isSpeaking: false },
     { id: "2", name: "Alex", avatar: "🤠", points: 800, isSpeaking: true },
     { id: "3", name: "Sam", avatar: "🤖", points: 450, isSpeaking: false },
   ];
 
+  // ==========================================
+  // 1. AUDIO RECORDING LOGIC
+  // ==========================================
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -33,6 +44,7 @@ export default function ScavengerHuntUI() {
       setIsRecording(true);
     } catch (err) {
       console.error("Microphone access denied or error:", err);
+      alert("Please allow microphone access to talk to the Game Master.");
     }
   };
 
@@ -41,7 +53,7 @@ export default function ScavengerHuntUI() {
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
       setIsRecording(false);
-      setIsLoading(true);
+      setIsLoading(true); // Triggers the "Sending..." UI state
     }
   };
 
@@ -69,15 +81,37 @@ export default function ScavengerHuntUI() {
     }
   };
 
+  // ==========================================
+  // 2. IMAGE CAPTURE LOGIC
+  // ==========================================
+  const handleImageCapture = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Create a temporary local URL to preview the image instantly
+      const localUrl = URL.createObjectURL(file);
+      setImagePreview(localUrl);
+    }
+  };
+
+  const handleSubmitProof = () => {
+    setIsSubmitting(true);
+    // TODO: Send image to Convex Action -> MiniMax Vision API
+    setTimeout(() => {
+      setIsSubmitting(false);
+      setImagePreview(null);
+      alert("MiniMax says: THAT IS A RED BUILDING! +500 PTS!");
+    }, 2000); // Fake network delay
+  };
+
+  // ==========================================
+  // 3. THE UI RENDER
+  // ==========================================
   return (
     <div className="min-h-screen bg-yellow-50 text-slate-900 flex flex-col items-center p-4 font-sans selection:bg-pink-300">
-      <div className="w-full max-w-md flex flex-col gap-6 mt-4">
-      
-
-        {/* Header: Team Name & Overall Score */}
+      <div className="w-full max-w-md flex flex-col gap-6 mt-4 pb-12">
+        
+        {/* Header: Navigation, Score, & Team Name */}
         <header className="flex flex-col gap-3 bg-white border-4 border-black p-4 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-  
-          {/* Top Row: Back Button & Live Score */}
           <div className="flex justify-between items-start">
             <Link 
               href="/" 
@@ -93,28 +127,18 @@ export default function ScavengerHuntUI() {
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Points</p>
             </div>
           </div>
-
-          {/* Bottom Row: Title & Team */}
           <div>
             <h1 className="text-2xl font-black tracking-tighter text-blue-600 uppercase leading-none mb-1">City Hunter</h1>
             <p className="text-sm font-bold text-slate-500">Team: Night Owls</p>
           </div>
-  
-</header>
+        </header>
 
-        {/* NEW: The Active Team Roster Strip */}
+        {/* Team Roster Strip */}
         <section className="flex gap-2 overflow-x-auto pb-2 -mx-2 px-2 snap-x hide-scrollbar">
           {mockRoster.map((player) => (
-            <div 
-              key={player.id} 
-              className={`flex-shrink-0 flex items-center gap-2 bg-white border-4 border-black p-2 rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] snap-center transition-transform ${
-                player.isSpeaking ? 'scale-105 border-green-500 bg-green-50' : ''
-              }`}
-            >
-              {/* Avatar Box */}
+            <div key={player.id} className={`flex-shrink-0 flex items-center gap-2 bg-white border-4 border-black p-2 rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] snap-center transition-transform ${player.isSpeaking ? 'scale-105 border-green-500 bg-green-50' : ''}`}>
               <div className="w-10 h-10 flex items-center justify-center bg-slate-200 border-2 border-black rounded-lg text-xl relative">
                 {player.avatar}
-                {/* Active Speaker Indicator */}
                 {player.isSpeaking && (
                   <span className="absolute -top-2 -right-2 flex h-4 w-4">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
@@ -122,8 +146,6 @@ export default function ScavengerHuntUI() {
                   </span>
                 )}
               </div>
-              
-              {/* Player Info */}
               <div className="flex flex-col pr-2">
                 <span className="font-black text-sm uppercase leading-tight">{player.name}</span>
                 <span className="text-xs font-bold text-blue-600">{player.points} pts</span>
@@ -149,43 +171,80 @@ export default function ScavengerHuntUI() {
           </div>
         </section>
 
-        {/* The Voice Interface */}
-        <section className="flex flex-col items-center justify-center py-4">
-          <div className="relative group">
+        {/* Dynamic Action Zone: Image Review OR Dual Inputs */}
+        {imagePreview ? (
+          /* Image Review Modal */
+          <section className="bg-slate-900 border-4 border-black rounded-3xl p-4 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transform -rotate-1 flex flex-col gap-4 animate-in fade-in zoom-in duration-200">
+            <h3 className="text-white font-black uppercase tracking-widest text-center">Review Proof</h3>
+            
+            <div className="w-full h-64 border-4 border-white rounded-xl overflow-hidden bg-black relative">
+              <img src={imagePreview} alt="Proof preview" className="object-cover w-full h-full" />
+            </div>
+
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setImagePreview(null)}
+                disabled={isSubmitting}
+                className="flex-1 bg-slate-500 text-white border-4 border-black py-3 rounded-xl font-black uppercase hover:bg-slate-400 active:translate-y-1 active:shadow-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50 disabled:transform-none"
+              >
+                Retake
+              </button>
+              <button 
+                onClick={handleSubmitProof}
+                disabled={isSubmitting}
+                className="flex-[2] bg-green-400 text-black border-4 border-black py-3 rounded-xl font-black uppercase hover:bg-green-300 active:translate-y-1 active:shadow-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50 disabled:transform-none"
+              >
+                {isSubmitting ? 'Analyzing...' : 'Submit to Judge'}
+              </button>
+            </div>
+          </section>
+        ) : (
+          /* Dual Input Zone: Camera and Mic */
+          <section className="flex flex-row justify-center items-center gap-6 py-4">
+            
+            {/* Hidden File Input */}
+            <input 
+              type="file" 
+              accept="image/*" 
+              capture="environment" 
+              className="hidden" 
+              ref={fileInputRef}
+              onChange={handleImageCapture}
+            />
+
+            {/* Camera Button */}
             <button 
-              onMouseDown={() => setIsRecording(true)}
-              onMouseUp={() => setIsRecording(false)}
-              onTouchStart={() => setIsRecording(true)}
-              onTouchEnd={() => setIsRecording(false)}
-              className={`relative z-10 w-36 h-36 flex flex-col items-center justify-center rounded-full text-white transition-all duration-150 border-4 border-black outline-none select-none ${
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading}
+              className="relative w-24 h-24 flex flex-col items-center justify-center rounded-full text-white bg-pink-500 border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-pink-400 active:translate-y-1 active:translate-x-1 active:shadow-none transition-all outline-none disabled:opacity-50 disabled:transform-none"
+            >
+              <span className="text-3xl mb-1">📸</span>
+              <span className="text-[10px] font-black uppercase tracking-widest">Snap</span>
+            </button>
+
+            {/* Microphone Button (Now wired to your actual logic!) */}
+            <button 
+              onMouseDown={startRecording}
+              onMouseUp={stopRecording}
+              onTouchStart={startRecording}
+              onTouchEnd={stopRecording}
+              disabled={isLoading}
+              className={`relative z-10 w-32 h-32 flex flex-col items-center justify-center rounded-full text-white transition-all duration-150 border-4 border-black outline-none select-none disabled:transform-none ${
                 isRecording 
                   ? 'bg-red-500 scale-95 shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] translate-y-2 translate-x-2' 
-                  : 'bg-blue-500 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-400'
+                  : (isLoading ? 'bg-slate-400 shadow-none' : 'bg-blue-500 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-400')
               }`}
             >
-              <span className="text-5xl mb-2">{isRecording ? '🔥' : '🎤'}</span>
-              <span className="text-sm font-black uppercase tracking-widest">
-                {isRecording ? 'Listening' : 'Hold to Talk'}
+              <span className="text-4xl mb-1">{isRecording ? '🔥' : (isLoading ? '⏳' : '🎤')}</span>
+              <span className="text-[10px] font-black uppercase tracking-widest">
+                {isRecording ? 'Listening' : (isLoading ? 'Sending...' : 'Talk')}
               </span>
             </button>
-          </div>
-          
-          <div className="h-12 mt-6 flex items-center justify-center">
-             <p className={`text-sm font-bold text-center px-6 py-2 rounded-xl transition-all ${
-               isRecording 
-                ? 'bg-red-100 text-red-600 border-2 border-red-200' 
-                : 'text-slate-500'
-             }`}>
-              {isRecording 
-                ? '"Wait, I see the pyramid right now!"' 
-                : 'Press and hold to tell the Game Master.'}
-            </p>
-          </div>
-        </section>
 
+          </section>
+        )}
       </div>
 
-      {/* Optional: Add a simple CSS rule for the hide-scrollbar class in your global CSS */}
       <style dangerouslySetInnerHTML={{__html: `
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
