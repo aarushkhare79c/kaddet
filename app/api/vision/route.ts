@@ -1,4 +1,8 @@
 import { NextResponse } from 'next/server';
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "../../../my-app/convex/_generated/api";
+
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 export async function POST(req: Request) {
   try {
@@ -76,6 +80,16 @@ export async function POST(req: Request) {
 		reason: rawContent.slice(0, 100) // Just grab the first 100 chars of the AI's explanation
 	};
 	}
+
+  if (result.success) {
+    console.log("📸 Vision Proof Validated! Awarding points...");
+    
+    // We award the points here because the eyes saw the proof!
+    await convex.mutation(api.users.addPoints, { 
+      username: "Dylan", // You can pass this in the request body from frontend
+      amount: 500 
+    });
+  }
 
 	return NextResponse.json(result);
 

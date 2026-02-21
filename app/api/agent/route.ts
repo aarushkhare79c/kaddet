@@ -1,21 +1,21 @@
 import { NextResponse } from 'next/server';
 import { MR_BEAST_PROMPT } from '../../../lib/prompt';
-import { api } from "../../../my-app/convex/_generated/api";
-import { ConvexHttpClient } from "convex/browser";
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+
+// Note: We removed the Convex import here because the Audio Agent 
+// no longer awards points directly.
+
 export async function POST(req: Request) {
   try {
     console.log("🟢 1. Receiving audio from frontend...");
     const formData = await req.formData();
     const audioFile = formData.get('audio') as File;
-    const username = formData.get('username') as string || "Anonymous"; // Get username from UI
 
     if (!audioFile) {
       return NextResponse.json({ error: "No audio provided" }, { status: 400 });
     }
 
     // ==========================================
-    // STEP 1: SPEECHMATICS (Speech to Text)
+    // STEP 1: SPEECHMATICS (STT)
     // ==========================================
     const speechmaticsData = new FormData();
     speechmaticsData.append('data_file', audioFile, 'audio.webm'); 
@@ -26,33 +26,20 @@ export async function POST(req: Request) {
     };
     speechmaticsData.append('config', JSON.stringify(config));
 
-    console.log("🟡 2. Sending directly to Speechmatics API...");
-
-    const response = await fetch('https://asr.api.speechmatics.com/v2/jobs', {
+    const smResponse = await fetch('https://asr.api.speechmatics.com/v2/jobs', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.SPEECHMATICS_API_KEY}`
-      },
+      headers: { 'Authorization': `Bearer ${process.env.SPEECHMATICS_API_KEY}` },
       body: speechmaticsData
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Speechmatics API Error: ${errorText}`);
-    }
-
-    const jobData = await response.json();
-    console.log("🔵 3. Job created! ID:", jobData.id);
+    const jobData = await smResponse.json();
     const jobId = jobData.id;
     let jobStatus = "running";
     let transcriptText = "";
 
-    console.log("⏳ 4. Waiting for Speechmatics to process the audio...");
-
-    // Poll the API every 2 seconds until the job is done
+    // Polling Loop
     while (jobStatus === "running" || jobStatus === "new") {
       await new Promise(resolve => setTimeout(resolve, 2000));
-
       const statusRes = await fetch(`https://asr.api.speechmatics.com/v2/jobs/${jobId}`, {
         headers: { 'Authorization': `Bearer ${process.env.SPEECHMATICS_API_KEY}` }
       });
@@ -63,27 +50,18 @@ export async function POST(req: Request) {
         const transcriptRes = await fetch(`https://asr.api.speechmatics.com/v2/jobs/${jobId}/transcript?format=txt`, {
           headers: { 'Authorization': `Bearer ${process.env.SPEECHMATICS_API_KEY}` }
         });
-        
         transcriptText = await transcriptRes.text();
-        console.log("🟢 5. Transcript received:", transcriptText);
         break; 
-      } else if (jobStatus === "rejected") {
-        throw new Error("Speechmatics rejected the audio during processing.");
       }
     }
 
-    // Safety Check: If the user didn't say anything, skip MiniMax
-    if (!transcriptText || transcriptText.trim() === "") {
-      return NextResponse.json({ text: "I didn't hear anything! Hold the button and speak up!" });
+    if (!transcriptText.trim()) {
+      return NextResponse.json({ text: "I didn't hear anything! Speak up!" });
     }
 
     // ==========================================
-    // STEP 2: MINIMAX (The Brain / LLM)
+    // STEP 2: MINIMAX (Brain)
     // ==========================================
-    console.log("🟡 6. Sending transcript to MiniMax...");
-    
-    // app/api/agent/route.ts
-
     const llmResponse = await fetch('https://api.minimax.io/v1/text/chatcompletion_v2', {
       method: 'POST',
       headers: {
@@ -95,47 +73,33 @@ export async function POST(req: Request) {
         messages: [
           { 
             role: "system", 
-            content: MR_BEAST_PROMPT + " \n\nIMPORTANT: You must respond ONLY with a JSON object. No conversational filler before or after. Format: {\"text\": \"your message\", \"success\": boolean}" 
+            content: MR_BEAST_PROMPT + " \n\nIMPORTANT: Respond ONLY in JSON. { \"text\": \"your reply\", \"isAtLocation\": boolean }. Set isAtLocation to true ONLY if the user describes being at the quest target." 
           },
           { role: "user", content: transcriptText }
-        ],
-        // 🛑 REMOVE 'response_format' entirely to fix the error
+        ]
       })
     });
     
     const llmData = await llmResponse.json();
+    const rawContent = llmData.choices[0].message.content;
 
-    // 1. Get the raw string content
-    let rawContent = llmData.choices[0].message.content;
-
-    // 2. THE CLEANER: Strip out Markdown code blocks if they exist
-    const jsonRegex = /\{[\s\S]*\}/; // Matches anything between the first { and last }
-    const match = rawContent.match(jsonRegex);
-
-    if (!match) {
-      throw new Error("MiniMax didn't return a valid JSON object.");
-    }
+    // Clean JSON extraction
+    const match = rawContent.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("MiniMax failed to return JSON");
 
     const parsedData = JSON.parse(match[0]);
-    // ==========================================
-    // STEP 3: UPDATE CONVEX
-    // ==========================================
-    if (parsedData.success) {
-      console.log(`🏆 Success! Adding 500 points to ${username}`);
-      await convex.mutation(api.users.ensureUser, { username: username });
-      await convex.mutation(api.users.addPoints, { 
-        username: username, 
-        amount: 500 
-      });
-    }
 
+    // ==========================================
+    // RETURN TO FRONTEND
+    // ==========================================
+    // We do NOT add points here. We just tell the frontend if they are at the spot.
     return NextResponse.json({ 
       text: parsedData.text, 
-      success: parsedData.success 
+      isAtLocation: parsedData.isAtLocation || parsedData.success || false
     });
 
   } catch (error: any) {
-    console.error("🔴 Pipeline Error:", error);
+    console.error("🔴 Audio Pipeline Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
