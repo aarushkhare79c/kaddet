@@ -9,7 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@speechmatics/batch-client": "^5.1.0",
     "next": "16.1.6",
+    "plivo": "^4.75.7",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
