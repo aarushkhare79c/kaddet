@@ -1,45 +1,84 @@
 import { NextResponse } from 'next/server';
 import { MR_BEAST_PROMPT } from '../../../lib/prompt';
-import { BatchClient } from '@speechmatics/batch-client'; 
 
 export async function POST(req: Request) {
   try {
+    console.log("🟢 1. Receiving audio from frontend...");
     const formData = await req.formData();
-    console.log("🟢 1. Audio received from frontend!");
+    const audioFile = formData.get('audio') as File;
 
-    const audioFile = (formData.get('audio') || formData.get('file')) as File;
-    if (!audioFile || audioFile.size === 0) {
-      throw new Error("Audio file is empty or missing!");
+    if (!audioFile) {
+      return NextResponse.json({ error: "No audio provided" }, { status: 400 });
     }
 
     // ==========================================
     // STEP 1: SPEECHMATICS (Speech to Text)
     // ==========================================
-    console.log("🟡 2. Sending to Speechmatics (SDK handles the waiting)...");
+    const speechmaticsData = new FormData();
+    speechmaticsData.append('data_file', audioFile, 'audio.webm'); 
     
-    const smClient = new BatchClient({ 
-      apiKey: process.env.SPEECHMATICS_API_KEY as string,
-      appId: "kaddet-hackathon" 
+    const config = {
+      type: "transcription",
+      transcription_config: { operating_point: "enhanced", language: "en" }
+    };
+    speechmaticsData.append('config', JSON.stringify(config));
+
+    console.log("🟡 2. Sending directly to Speechmatics API...");
+
+    const response = await fetch('https://asr.api.speechmatics.com/v2/jobs', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.SPEECHMATICS_API_KEY}`
+      },
+      body: speechmaticsData
     });
-    
-    const userText = await smClient.transcribe(
-      audioFile,
-      { transcription_config: { language: "en" } },
-      "txt" as any 
-    );
-    
-    if (typeof userText !== 'string' || !userText.trim()) {
-      throw new Error("Speechmatics returned empty text.");
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Speechmatics API Error: ${errorText}`);
     }
 
-    console.log("🟢 3. Real Speechmatics text:", userText);
+    const jobData = await response.json();
+    console.log("🔵 3. Job created! ID:", jobData.id);
+    const jobId = jobData.id;
+    let jobStatus = "running";
+    let transcriptText = "";
+
+    console.log("⏳ 4. Waiting for Speechmatics to process the audio...");
+
+    // Poll the API every 2 seconds until the job is done
+    while (jobStatus === "running" || jobStatus === "new") {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      const statusRes = await fetch(`https://asr.api.speechmatics.com/v2/jobs/${jobId}`, {
+        headers: { 'Authorization': `Bearer ${process.env.SPEECHMATICS_API_KEY}` }
+      });
+      const statusData = await statusRes.json();
+      jobStatus = statusData.job.status;
+
+      if (jobStatus === "done") {
+        const transcriptRes = await fetch(`https://asr.api.speechmatics.com/v2/jobs/${jobId}/transcript?format=txt`, {
+          headers: { 'Authorization': `Bearer ${process.env.SPEECHMATICS_API_KEY}` }
+        });
+        
+        transcriptText = await transcriptRes.text();
+        console.log("🟢 5. Transcript received:", transcriptText);
+        break; 
+      } else if (jobStatus === "rejected") {
+        throw new Error("Speechmatics rejected the audio during processing.");
+      }
+    }
+
+    // Safety Check: If the user didn't say anything, skip MiniMax
+    if (!transcriptText || transcriptText.trim() === "") {
+      return NextResponse.json({ text: "I didn't hear anything! Hold the button and speak up!" });
+    }
 
     // ==========================================
     // STEP 2: MINIMAX (The Brain / LLM)
     // ==========================================
-    console.log("🟡 4. Sending to MiniMax...");
+    console.log("🟡 6. Sending transcript to MiniMax...");
     
-    // ⬇️ CHANGED TO .io INSTEAD OF .chat! ⬇️
     const llmResponse = await fetch('https://api.minimax.io/v1/text/chatcompletion_v2', {
       method: 'POST',
       headers: {
@@ -47,33 +86,29 @@ export async function POST(req: Request) {
         'Authorization': `Bearer ${process.env.MINIMAX_API_KEY}`
       },
       body: JSON.stringify({
-        model: "MiniMax-Text-01", // 👈 CHANGED TO THE GLOBAL MODEL
+        model: "MiniMax-Text-01", 
         messages: [
           { role: "system", content: MR_BEAST_PROMPT },
-          { role: "user", content: userText }
+          { role: "user", content: transcriptText } // We feed the Speechmatics text right here
         ]
       })
     });
     
     const llmData = await llmResponse.json();
     
+    // Check for MiniMax specific error codes
     if (llmData.base_resp && llmData.base_resp.status_code !== 0) {
-      console.error("🔴 MiniMax Internal Error:", llmData.base_resp);
-      throw new Error(`MiniMax rejected the request: ${llmData.base_resp.status_msg}`);
-    }
-
-    if (!llmData.choices || llmData.choices.length === 0) {
-      console.error("🔴 MiniMax Raw Data:", llmData);
-      throw new Error("MiniMax failed to return a valid response.");
+      throw new Error(`MiniMax Error: ${llmData.base_resp.status_msg}`);
     }
 
     const beastReply = llmData.choices[0].message.content;
-    console.log("🟢 5. Real MiniMax reply:", beastReply);
+    console.log("🟢 7. Real MiniMax reply:", beastReply);
 
+    // 🛑 Return the final MrBeast response to the frontend alert
     return NextResponse.json({ text: beastReply });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("🔴 Pipeline Error:", error);
-    return NextResponse.json({ error: "Agent failed" }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
