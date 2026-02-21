@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import confetti from 'canvas-confetti';
 
 export default function ScavengerHuntUI() {
 
@@ -66,6 +67,8 @@ export default function ScavengerHuntUI() {
   const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
   const formData = new FormData();
   formData.append('audio', audioBlob);
+
+  formData.append('username', "Dylan");
 
   try {
     console.log("Sending audio to backend...");
@@ -352,6 +355,17 @@ function SuccessModal({ isOpen, points, reason, onClose }: {
   onClose: () => void 
 }) {
   if (!isOpen) return null;
+
+  useEffect(() => {
+  if (isOpen) {
+    confetti({
+      particleCount: 150,
+      spread: 70,
+      origin: { y: 0.6 },
+      colors: ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF']
+    });
+  }
+}, [isOpen]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
