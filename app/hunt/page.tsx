@@ -1,10 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, use } from 'react';
 import confetti from 'canvas-confetti';
 
 export default function ScavengerHuntUI() {
+  const [points, setPoints] = useState(2450);
+  const [currentMission, setCurrentMission] = useState(0);
   const [showSuccess, setShowSuccess] = useState(false);
   const [winData, setWinData] = useState({ points: 0, reason: "" });
   const [beastSpeech, setBeastSpeech] = useState<string | null>(null); // New: For MrBeast's chat bubble
@@ -21,11 +23,18 @@ export default function ScavengerHuntUI() {
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+
+  const dummyMissions = [
+  "Find the giant glass pyramid by the museum! 🏛️",
+  "Locate the tallest bronze statue in the main plaza. 🗽",
+  "Find the wall covered in a mural of a giant blue whale. 🐋",
+  "Take a photo outside the city's oldest coffee shop. ☕"
+];
   // MOCK DATA: Roster
   const mockRoster = [
-    { id: "1", name: "You", avatar: "😎", points: 1200, isSpeaking: false },
-    { id: "2", name: "Alex", avatar: "🤠", points: 800, isSpeaking: true },
-    { id: "3", name: "Sam", avatar: "🤖", points: 450, isSpeaking: false },
+    { id: "1", name: "You", avatar: "😎", points: points, isSpeaking: false },
+    { id: "2", name: "Alex", avatar: "🤠", points: 0, isSpeaking: true },
+    { id: "3", name: "Sam", avatar: "🤖", points: 0, isSpeaking: false },
   ];
 
   // ==========================================
@@ -116,7 +125,7 @@ export default function ScavengerHuntUI() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           image: base64Image,
-          quest: "The giant glass pyramid by the museum",
+          quest: dummyMissions[currentMission],
           username: "Dylan"
         }),
       });
@@ -129,6 +138,8 @@ export default function ScavengerHuntUI() {
         setShowSuccess(true);
         setImagePreview(null);
         setCapturedFile(null);
+        setCurrentMission(currentMission+1);
+        setPoints(points+500);
       } else {
         alert(`REJECTED: ${data.reason}`);
       }
@@ -151,7 +162,7 @@ export default function ScavengerHuntUI() {
             </Link>
             <div className="text-right flex flex-col items-end">
               <div className="bg-yellow-400 border-2 border-black px-3 py-1 rounded-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                <p className="text-xl font-black leading-none">2,450</p>
+                <p className="text-xl font-black leading-none">{points}</p>
               </div>
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mt-1">Points</p>
             </div>
@@ -176,11 +187,12 @@ export default function ScavengerHuntUI() {
         </section>
 
         {/* Current Quest Card */}
-        <section className="bg-white border-4 border-black rounded-3xl p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden transform rotate-1">
-          <div className="absolute -right-6 -top-2 bg-pink-500 text-white font-black text-xs px-8 py-2 uppercase rotate-12 border-2 border-black">Hot</div>
-          <h2 className="text-sm font-black text-blue-500 uppercase tracking-widest mb-1">Current Mission</h2>
-          <p className="text-3xl font-black leading-tight">Find the giant glass pyramid by the museum! 🏛️</p>
-        </section>
+       <section className="bg-white border-4 border-black rounded-3xl p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden transform rotate-1">
+        <h2 className="text-sm font-black text-blue-500 uppercase tracking-widest mb-1">Current Mission</h2>
+        <p className="text-3xl font-black leading-tight">
+          {dummyMissions[currentMission]}
+        </p>
+      </section>
 
         {/* MR BEAST CHAT BUBBLE */}
         {beastSpeech && (

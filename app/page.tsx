@@ -8,7 +8,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-orange-400 text-slate-900 flex flex-col items-center p-4 font-sans selection:bg-white">
       <div className="w-full max-w-md flex flex-col gap-8 mt-8">
         
-        <div className="text-center space-y-8">
+        {/*<div className="text-center space-y-8">
         <h1 className="text-6xl font-black uppercase tracking-tighter text-blue-600 drop-shadow-[4px_4px_0px_rgba(0,0,0,1)]">
           City Hunter
         </h1>
@@ -31,8 +31,8 @@ export default function HomePage() {
           >
             Sign In to your Squad
           </Link>
-        </div>
-      </div>
+        </div>*/}
+      {/*</div>*/}
         {/* Main Header Card */}
         <header className="bg-white border-4 border-black p-6 rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] text-center transform -rotate-1 relative">
           {/* Decorative Badge */}
