@@ -3,26 +3,24 @@ import { v } from "convex/values";
 
 /**
  * MUTATION: ensureUser
- * Use this when the app starts. It checks if the player exists.
- * If they do, it returns their ID. If not, it creates them with 0 points.
+ * (Legacy function - mostly replaced by signUp)
  */
 export const ensureUser = mutation({
-  // 'args' defines what the Frontend MUST send to this function
   args: { username: v.string() },
   handler: async (ctx, args) => {
-    // 1. Search the 'users' table using the index we made in schema.ts
     const existing = await ctx.db
       .query("users")
       .withIndex("by_username", (q) => q.eq("username", args.username))
       .unique();
 
-    // 2. If the user is found, just return their existing data
     if (existing) return existing._id;
 
-    // 3. Otherwise, insert a new record and start them at 0 points
+    // FIX: We added dummy values for password and teamName to satisfy the new schema
     return await ctx.db.insert("users", { 
       username: args.username, 
-      points: 0 
+      points: 0,
+      password: "legacy_user_no_password", 
+      teamName: "Solo Players",            
     });
   },
 });
@@ -61,5 +59,78 @@ export const getLeaderboard = query({
       .query("users")
       .order("desc") // Sort by newest/highest points
       .take(10);     // Only grab the top 10 to keep it fast
+  },
+});
+
+// Add this to the bottom of your existing my-app/convex/users.ts file
+
+/**
+ * QUERY: checkTeam
+ * Real-time check to see if a team exists so the UI can update the button.
+ */
+export const checkTeam = query({
+  args: { teamName: v.string() },
+  handler: async (ctx, args) => {
+    if (!args.teamName) return false;
+    const team = await ctx.db
+      .query("teams")
+      .withIndex("by_name", (q) => q.eq("name", args.teamName))
+      .unique();
+    return !!team; // Returns true if team exists, false if not
+  },
+});
+
+/**
+ * MUTATION: signUp
+ * Creates a user and creates the team if it doesn't exist yet.
+ */
+export const signUp = mutation({
+  args: { username: v.string(), password: v.string(), teamName: v.string() },
+  handler: async (ctx, args) => {
+    // 1. Check if user already exists
+    const existingUser = await ctx.db
+      .query("users")
+      .withIndex("by_username", (q) => q.eq("username", args.username))
+      .unique();
+    if (existingUser) throw new Error("Username already taken!");
+
+    // 2. Check if team exists, if not, create it
+    const existingTeam = await ctx.db
+      .query("teams")
+      .withIndex("by_name", (q) => q.eq("name", args.teamName))
+      .unique();
+    if (!existingTeam) {
+      await ctx.db.insert("teams", { name: args.teamName });
+    }
+
+    // 3. Create the user
+    await ctx.db.insert("users", {
+      username: args.username,
+      password: args.password,
+      teamName: args.teamName,
+      points: 0,
+    });
+    
+    return "Success";
+  },
+});
+
+/**
+ * MUTATION: login
+ * Verifies the username and hashed password.
+ */
+export const login = mutation({
+  args: { username: v.string(), password: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_username", (q) => q.eq("username", args.username))
+      .unique();
+    
+    if (!user) throw new Error("User not found!");
+    if (user.password !== args.password) throw new Error("Incorrect password!");
+    
+    // Return user data to save in localStorage on the frontend
+    return { username: user.username, teamName: user.teamName, points: user.points };
   },
 });
