@@ -3,9 +3,36 @@ import React from 'react';
 
 export default function HomePage() {
   return (
+
+    
     <div className="min-h-screen bg-orange-400 text-slate-900 flex flex-col items-center p-4 font-sans selection:bg-white">
       <div className="w-full max-w-md flex flex-col gap-8 mt-8">
         
+        <div className="text-center space-y-8">
+        <h1 className="text-6xl font-black uppercase tracking-tighter text-blue-600 drop-shadow-[4px_4px_0px_rgba(0,0,0,1)]">
+          City Hunter
+        </h1>
+        
+        <p className="text-xl font-bold text-slate-700 max-w-xs mx-auto">
+          The ultimate AI-powered scavenger hunt.
+        </p>
+
+        <div className="flex flex-col gap-4">
+          <Link 
+            href="/login"
+            className="bg-pink-500 text-white border-4 border-black px-12 py-4 rounded-2xl font-black text-2xl uppercase shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all hover:bg-pink-400 active:translate-y-1 active:shadow-none"
+          >
+            Start Hunting
+          </Link>
+          
+          <Link 
+            href="/login"
+            className="text-sm font-black uppercase tracking-widest text-slate-500 hover:text-black transition-colors"
+          >
+            Sign In to your Squad
+          </Link>
+        </div>
+      </div>
         {/* Main Header Card */}
         <header className="bg-white border-4 border-black p-6 rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] text-center transform -rotate-1 relative">
           {/* Decorative Badge */}
